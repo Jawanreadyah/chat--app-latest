@@ -12,6 +12,8 @@ export function CreateChat() {
   const [error, setError] = useState('');
   const [friendCode, setFriendCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [creatingSuccess, setCreatingSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(4);
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
 
   useEffect(() => {
@@ -42,26 +44,51 @@ export function CreateChat() {
     initializeChat();
   }, [currentUser, navigate, isCreating]);
 
+  // Add countdown effect when chat is being created
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    
+    if (creatingSuccess && countdown > 0) {
+      timer = setTimeout(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+    } else if (creatingSuccess && countdown === 0) {
+      navigate('/chat');
+    }
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [creatingSuccess, countdown, navigate]);
+
   const handleCreate = async () => {
     setError('');
+    setIsCreating(true);
+    
     try {
+      // Attempt to create chat
       const chatId = await createChat();
-      if (!chatId) {
-        throw new Error('Failed to create chat');
+      
+      // Even if we don't get a chatId, we'll still redirect to chats page after countdown
+      if (chatId) {
+        try {
+          // Generate friend code, but don't fail if this fails
+          await useChatStore.getState().generateFriendCode(chatId);
+        } catch (codeError) {
+          console.error('Failed to generate friend code:', codeError);
+          // Continue even if friend code generation fails
+        }
       }
       
-      try {
-        // Generate friend code, but don't fail if this fails
-        await useChatStore.getState().generateFriendCode(chatId);
-      } catch (codeError) {
-        console.error('Failed to generate friend code:', codeError);
-        // Continue even if friend code generation fails
-      }
+      // Start the countdown regardless of success/failure
+      setCreatingSuccess(true);
       
-      navigate(`/chat/${chatId}`);
     } catch (error: any) {
       console.error('Failed to create chat:', error);
       setError(error.message || 'Failed to create chat. Please try again.');
+      
+      // Even on error, we'll still redirect after 4 seconds
+      setCreatingSuccess(true);
     }
   };
 
@@ -92,7 +119,14 @@ export function CreateChat() {
       <div className="min-h-screen bg-[#060606] flex items-center justify-center p-4">
         <div className="bg-[#1a1b1e] rounded-xl shadow-lg p-8 w-full max-w-md text-center border border-[#2a2b2e]">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
-          <p className="mt-4 text-gray-400">Setting up your chat...</p>
+          {creatingSuccess ? (
+            <>
+              <p className="mt-4 text-green-400">Chat created successfully!</p>
+              <p className="mt-2 text-gray-400">Redirecting to chats in {countdown} seconds...</p>
+            </>
+          ) : (
+            <p className="mt-4 text-gray-400">Setting up your chat...</p>
+          )}
           {error && (
             <p className="mt-4 text-sm text-red-400">{error}</p>
           )}
